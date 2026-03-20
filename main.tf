@@ -13,6 +13,7 @@ resource "google_compute_network" "vpc_network" {
 resource "google_compute_instance" "vm_instance" {
   name         = "jianjiao-instance-3"
   machine_type = "e2-micro"
+  zone         = "us-east1-b"
 
   boot_disk {
     initialize_params {
