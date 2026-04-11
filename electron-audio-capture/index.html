@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>音频捕获与分析</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+    }
+
+    .container {
+      background: white;
+      border-radius: 20px;
+      padding: 40px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      max-width: 600px;
+      width: 100%;
+    }
+
+    h1 {
+      text-align: center;
+      color: #333;
+      margin-bottom: 30px;
+      font-size: 28px;
+    }
+
+    .controls {
+      display: flex;
+      gap: 15px;
+      justify-content: center;
+      margin-bottom: 30px;
+    }
+
+    button {
+      padding: 15px 30px;
+      font-size: 16px;
+      border: none;
+      border-radius: 50px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    #startBtn {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+
+    #startBtn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+    }
+
+    #stopBtn {
+      background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+      color: white;
+    }
+
+    #stopBtn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(245, 87, 108, 0.4);
+    }
+
+    #analyzeBtn {
+      background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+      color: white;
+    }
+
+    #analyzeBtn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(79, 172, 254, 0.4);
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none !important;
+    }
+
+    .visualizer {
+      background: #f8f9fa;
+      border-radius: 10px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+
+    canvas {
+      width: 100%;
+      height: 200px;
+      background: #2d3748;
+      border-radius: 8px;
+    }
+
+    .status {
+      text-align: center;
+      padding: 15px;
+      margin-bottom: 20px;
+      border-radius: 8px;
+      font-weight: 600;
+    }
+
+    .status.recording {
+      background: #fed7d7;
+      color: #c53030;
+    }
+
+    .status.stopped {
+      background: #c6f6d5;
+      color: #276749;
+    }
+
+    .status.analyzing {
+      background: #bee3f8;
+      color: #2b6cb0;
+    }
+
+    .status.error {
+      background: #fed7d7;
+      color: #c53030;
+    }
+
+    .result {
+      background: #f8f9fa;
+      border-radius: 10px;
+      padding: 20px;
+      margin-top: 20px;
+    }
+
+    .result h3 {
+      color: #333;
+      margin-bottom: 15px;
+      font-size: 18px;
+    }
+
+    .result-content {
+      background: white;
+      padding: 15px;
+      border-radius: 8px;
+      border-left: 4px solid #667eea;
+      min-height: 100px;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      font-family: 'Courier New', monospace;
+      font-size: 14px;
+      color: #4a5568;
+    }
+
+    .info {
+      margin-top: 20px;
+      padding: 15px;
+      background: #e2e8f0;
+      border-radius: 8px;
+      font-size: 14px;
+      color: #4a5568;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🎤 音频捕获与分析</h1>
+    
+    <div id="status" class="status stopped">准备就绪</div>
+    
+    <div class="controls">
+      <button id="startBtn">开始录音</button>
+      <button id="stopBtn" disabled>停止录音</button>
+      <button id="analyzeBtn" disabled>发送分析</button>
+    </div>
+    
+    <div class="visualizer">
+      <canvas id="visualizer"></canvas>
+    </div>
+    
+    <div class="result">
+      <h3>📊 分析结果</h3>
+      <div id="resultContent" class="result-content">等待分析...</div>
+    </div>
+    
+    <div class="info">
+      <p><strong>使用说明：</strong></p>
+      <p>1. 点击"开始录音"录制音频</p>
+      <p>2. 点击"停止录音"结束录制</p>
+      <p>3. 点击"发送分析"将音频发送到后端 API 进行解析</p>
+      <p>4. 查看返回的分析结果</p>
+    </div>
+  </div>
+
+  <script>
+    let mediaRecorder;
+    let audioChunks = [];
+    let audioContext;
+    let analyser;
+    let dataArray;
+    let canvas;
+    let canvasCtx;
+    let animationId;
+    let audioBlob = null;
+
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const analyzeBtn = document.getElementById('analyzeBtn');
+    const statusDiv = document.getElementById('status');
+    const resultContent = document.getElementById('resultContent');
+    canvas = document.getElementById('visualizer');
+    canvasCtx = canvas.getContext('2d');
+
+    // 设置 canvas 尺寸
+    function resizeCanvas() {
+      canvas.width = canvas.offsetWidth;
+      canvas.height = canvas.offsetHeight;
+    }
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+
+    // 初始化音频可视化
+    async function initAudioVisualizer(stream) {
+      audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      const source = audioContext.createMediaStreamSource(stream);
+      analyser = audioContext.createAnalyser();
+      analyser.fftSize = 256;
+      source.connect(analyser);
+      
+      const bufferLength = analyser.frequencyBinCount;
+      dataArray = new Uint8Array(bufferLength);
+      
+      drawVisualizer();
+    }
+
+    // 绘制音频可视化
+    function drawVisualizer() {
+      analyser.getByteFrequencyData(dataArray);
+      
+      canvasCtx.fillStyle = '#2d3748';
+      canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
+      
+      const barWidth = (canvas.width / dataArray.length) * 2.5;
+      let barHeight;
+      let x = 0;
+      
+      for (let i = 0; i < dataArray.length; i++) {
+        barHeight = dataArray[i] / 255 * canvas.height;
+        
+        const gradient = canvasCtx.createLinearGradient(0, canvas.height, 0, 0);
+        gradient.addColorStop(0, '#667eea');
+        gradient.addColorStop(1, '#f5576c');
+        
+        canvasCtx.fillStyle = gradient;
+        canvasCtx.fillRect(x, canvas.height - barHeight, barWidth, barHeight);
+        
+        x += barWidth + 1;
+      }
+      
+      animationId = requestAnimationFrame(drawVisualizer);
+    }
+
+    // 开始录音
+    startBtn.addEventListener('click', async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          audio: {
+            sampleRate: 44100,
+            channelCount: 1,
+            echoCancellation: true,
+            noiseSuppression: true
+          } 
+        });
+        
+        mediaRecorder = new MediaRecorder(stream);
+        audioChunks = [];
+        
+        mediaRecorder.ondataavailable = (event) => {
+          audioChunks.push(event.data);
+        };
+        
+        mediaRecorder.onstop = () => {
+          audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+          console.log('录音完成，Blob 大小:', audioBlob.size, 'bytes');
+        };
+        
+        mediaRecorder.start();
+        
+        // 启动可视化
+        await initAudioVisualizer(stream);
+        
+        // 更新 UI
+        startBtn.disabled = true;
+        stopBtn.disabled = false;
+        analyzeBtn.disabled = true;
+        statusDiv.textContent = '🔴 正在录音...';
+        statusDiv.className = 'status recording';
+        resultContent.textContent = '等待分析...';
+        
+      } catch (err) {
+        console.error('无法访问麦克风:', err);
+        statusDiv.textContent = '❌ 无法访问麦克风：' + err.message;
+        statusDiv.className = 'status error';
+      }
+    });
+
+    // 停止录音
+    stopBtn.addEventListener('click', () => {
+      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
+        
+        // 停止所有音轨
+        mediaRecorder.stream.getTracks().forEach(track => track.stop());
+        
+        // 停止可视化
+        if (animationId) {
+          cancelAnimationFrame(animationId);
+        }
+        if (audioContext) {
+          audioContext.close();
+        }
+        
+        // 更新 UI
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+        analyzeBtn.disabled = false;
+        statusDiv.textContent = '✅ 录音完成，可以发送分析';
+        statusDiv.className = 'status stopped';
+        
+        // 清空画布
+        canvasCtx.fillStyle = '#2d3748';
+        canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
+      }
+    });
+
+    // 发送音频进行分析
+    analyzeBtn.addEventListener('click', async () => {
+      if (!audioBlob) {
+        statusDiv.textContent = '❌ 没有可分析的音频';
+        statusDiv.className = 'status error';
+        return;
+      }
+      
+      statusDiv.textContent = '⏳ 正在发送分析...';
+      statusDiv.className = 'status analyzing';
+      resultContent.textContent = '正在处理...';
+      
+      try {
+        // 将 Blob 转换为 ArrayBuffer
+        const arrayBuffer = await audioBlob.arrayBuffer();
+        
+        // 通过 Electron API 发送到后端
+        const result = await window.electronAPI.analyzeAudio(arrayBuffer);
+        
+        if (result.success) {
+          statusDiv.textContent = '✅ 分析完成';
+          statusDiv.className = 'status stopped';
+          
+          // 显示结果
+          if (typeof result.data === 'object') {
+            resultContent.textContent = JSON.stringify(result.data, null, 2);
+          } else {
+            resultContent.textContent = String(result.data);
+          }
+        } else {
+          statusDiv.textContent = '❌ 分析失败';
+          statusDiv.className = 'status error';
+          resultContent.textContent = '错误：' + result.error;
+        }
+      } catch (error) {
+        console.error('分析出错:', error);
+        statusDiv.textContent = '❌ 发送失败';
+        statusDiv.className = 'status error';
+        resultContent.textContent = '错误：' + error.message;
+      }
+    });
+  </script>
+</body>
+</html>
