@@ -1,0 +1,29 @@
+```
+# Dependencies
+node_modules/
+
+# Logs
+*.log
+
+# Environment variables
+.env
+.env.local
+.env.*
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Electron specific
+electron-audio-capture/node_modules/
+electron-audio-capture/dist/
+electron-audio-capture/build/
+electron-audio-capture/.vscode/
+electron-audio-capture/.env
+electron-audio-capture/.env.local
+electron-audio-capture/.env.*
+```
